@@ -13,17 +13,16 @@ android {
             dimension = "audience"
             applicationIdSuffix = ".customer"
             versionNameSuffix = "-customer"
-            buildConfigField("String", "NUKKAD_ROLE", "\"customer\"")
+            resValue("string", "app_name", "Nukkad Customer")
         }
         create("merchant") {
             dimension = "audience"
             applicationIdSuffix = ".merchant"
             versionNameSuffix = "-merchant"
-            buildConfigField("String", "NUKKAD_ROLE", "\"merchant\"")
+            resValue("string", "app_name", "Nukkad Merchant")
         }
         create("dev") {
             dimension = "audience"
-            buildConfigField("String", "NUKKAD_ROLE", "\"dev\"")
         }
     }
     signingConfigs {
@@ -36,13 +35,14 @@ android {
     }
     defaultConfig {
         applicationId = "in.nukkad"
+        resValue("string", "app_name", "Nukkad Dev")
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4-m3-routing"
+        versionCode = 7
+        versionName = "0.7-product"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    buildFeatures { compose = true; buildConfig = true }
+    buildFeatures { compose = true; buildConfig = false }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -73,6 +73,12 @@ tasks.withType<Test>().configureEach {
 
 
 
+
+
+
+
+
+// No Java source files; avoid unnecessary javac access to locked platform jars on Windows.
 
 
 

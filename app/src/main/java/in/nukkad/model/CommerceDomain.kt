@@ -4,9 +4,14 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class CommerceDomain {
-    BAKERY, FOOD, PHARMACY, GROCERY, TAILORING, CARPENTRY, PLUMBING, ELECTRICAL, HOME_SERVICE, OTHER;
+    BAKERY, PHARMACY, CARPENTRY, OTHER;
 
     companion object {
-        fun from(value: String): CommerceDomain = entries.firstOrNull { it.name.equals(value.trim(), true) } ?: OTHER
+        fun from(value: String): CommerceDomain = when (value.trim().lowercase()) {
+            "bakery", "baker", "cake", "food" -> BAKERY
+            "medicine", "medicines", "pharmacy", "medical" -> PHARMACY
+            "carpentry", "carpenter", "woodwork" -> CARPENTRY
+            else -> OTHER
+        }
     }
 }

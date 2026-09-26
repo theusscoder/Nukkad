@@ -10,5 +10,7 @@ data class MerchantRules(
     val autoQuoteEnabled: Boolean = true,
     val openingHour: Int = 8,
     val closingHour: Int = 22,
-    val zoneId: String = "Asia/Kolkata"
+    val zoneId: String = "Asia/Kolkata",
+    val automations: List<AutomationRule> = emptyList()
 )
+

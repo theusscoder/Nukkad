@@ -65,7 +65,22 @@ class ShopAgent {
         val deadlineOk = check("Deadline", ready.toInstant().toEpochMilli() <= request.deadlineEpoch, "Ready $ready")
         if (!budgetOk || !capacityOk || !hoursOk || !deadlineOk) return Decision.NoMatch(checks)
         if (!floorOk || !rules.autoQuoteEnabled) return Decision.NeedsOwner(if (!floorOk) "Price below merchant floor" else "AutoQuote disabled", amount, checks)
+        if (rules.automations.isNotEmpty()) {
+            val automation = rules.automations.firstOrNull {
+                key(it.itemName) == key(request.item) && amount >= it.minimumOrderValue
+            }
+            check("Item automation", automation != null, automation?.action?.name ?: "No item rule matched")
+            check("Automation permits quote", automation?.action in setOf(AutomationAction.AUTO_QUOTE, AutomationAction.AUTO_ACCEPT), automation?.action?.name ?: "Owner review")
+            when (automation?.action) {
+                null, AutomationAction.ASK_OWNER -> return Decision.NeedsOwner("Owner review required by item rules", amount, checks)
+                AutomationAction.NO_MATCH -> return Decision.NoMatch(checks)
+                AutomationAction.AUTO_QUOTE, AutomationAction.AUTO_ACCEPT -> Unit
+            }
+        }
+        // AUTO_ACCEPT authorizes acceptance on customer selection, never unsolicited reservations.
         return Decision.AutoQuote(amount, ready.toInstant().toEpochMilli(), checks)
     }
 }
+
+
 

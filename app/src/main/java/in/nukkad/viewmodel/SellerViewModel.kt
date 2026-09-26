@@ -18,13 +18,21 @@ class SellerViewModel(private val transport: Transport, private val session: Str
     val orders = orderState.asStateFlow()
     private val event = MutableStateFlow("No selection yet")
     val orderEvent = event.asStateFlow()
+    private val receivedIds = mutableSetOf<String>()
+    private val quotedIds = mutableSetOf<String>()
+    val requestCount = MutableStateFlow(0)
+    val quoteCount = MutableStateFlow(0)
     suspend fun receive(request: Request, now: Long) {
         if (key(request.area) != key(profile.area) || request.domain !in profile.domains) return
+        receivedIds.add(request.requestId)
+        requestCount.value = receivedIds.size
         val (decision, offer) = book.quote(request, now)
         orderState.value = book.snapshot().orders
         mutable.value = SellerState.Evaluated(request, decision)
         offer?.let {
             transport.publish(Protocol.offers(session, request.customerId), Protocol.encode(Message(sessionId = session, sentAtEpoch = now, type = EventType.OFFER, offer = it)))
+            quotedIds.add(request.requestId)
+            quoteCount.value = quotedIds.size
             mutable.value = SellerState.Evaluated(request, decision, quoteSent = true)
         }
     }
@@ -54,4 +62,5 @@ class SellerViewModel(private val transport: Transport, private val session: Str
         transport.publish(Protocol.offers(session, order.selection.customerId), Protocol.encode(Message(sessionId = session, sentAtEpoch = now, type = EventType.ORDER_STATUS, order = order)))
     }
 }
+
 

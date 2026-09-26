@@ -52,8 +52,8 @@ class HarnessViewModel(application: Application) : AndroidViewModel(application)
                 mutableConfig.value = config
                 withContext(Dispatchers.IO) { configFile.writeText(Protocol.json.encodeToString(HarnessConfig.serializer(), config)) }
                 val transport = if (config.role == Role.LOCAL_LOOP) FakeTransport(FakeBroker()) else MqttTransport(config.host.trim(), config.port, newId(), config.tls)
-                val baseProfile = Seeds.seller(config.sellerId, config.sellerVariant)
-                val profile = baseProfile.copy(rules = baseProfile.rules.copy(maxDailyOrders = config.maxDailyOrders))
+                val baseProfile = if (`in`.nukkad.AppAudience.NUKKAD_ROLE == "merchant") `in`.nukkad.product.ProductStore(getApplication()).profile(config.sellerId) else Seeds.seller(config.sellerId, config.sellerVariant)
+                val profile = if (`in`.nukkad.AppAudience.NUKKAD_ROLE == "merchant") baseProfile else baseProfile.copy(rules = baseProfile.rules.copy(maxDailyOrders = config.maxDailyOrders))
                 val directory = getApplication<Application>().filesDir
                 val storagePrefix = if (config.role == Role.LOCAL_LOOP) "fake" else "mqtt"
                 val runtime = HarnessSession(transport, config.sessionId, config.role, config.customerId, profile, viewModelScope,
@@ -77,6 +77,17 @@ class HarnessViewModel(application: Application) : AndroidViewModel(application)
             System.currentTimeMillis() + deadlineHours * 3_600_000, constraints.split(',').map(::key).filter { it.isNotBlank() }.distinct())
         current.customer.send(request, System.currentTimeMillis())
     }
+    fun sendDraft(draft: `in`.nukkad.ai.IntentDraft) = action {
+        val current = checkNotNull(active.value)
+        check(current.ready.value && current.transport.connection.value == ConnectionState.Connected) { "Connect first" }
+        require(draft.domain != CommerceDomain.OTHER && draft.item.isNotBlank()) { "Confirm category and item" }
+        require(draft.quantity != null && draft.quantity.isFinite() && draft.quantity > 0) { "Confirm quantity" }
+        require(draft.budgetMax == null || draft.budgetMax > 0) { "Confirm budget" }
+        require(draft.deadlineEpoch == null || draft.deadlineEpoch > System.currentTimeMillis()) { "Confirm deadline" }
+        current.customer.send(Request(newId(), config.value.customerId, "kondapur", draft.domain.name.lowercase(),
+            draft.item.trim(), draft.quantity, draft.unit, draft.budgetMax, draft.deadlineEpoch, draft.constraints,
+            draft.domain, draft.originalTranscript, draft.normalizedText), System.currentTimeMillis())
+    }
     fun retry() = action { checkNotNull(active.value).customer.retry(System.currentTimeMillis()) }
     fun selectOffer(offerId: String) = action { checkNotNull(active.value).customer.select(offerId, System.currentTimeMillis()) }
     fun cancelOrder() = action { checkNotNull(active.value).customer.cancel(System.currentTimeMillis()) }
@@ -97,6 +108,8 @@ class HarnessViewModel(application: Application) : AndroidViewModel(application)
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { try { transport.disconnect() } finally { cancel() } }
     }
 }
+
+
 
 
 

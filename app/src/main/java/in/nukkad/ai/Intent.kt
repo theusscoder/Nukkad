@@ -31,14 +31,16 @@ class DeterministicIntentParser : LlmEngine {
             listOf("cake", "bakery", "bread", "pastry").any(lower::contains) -> CommerceDomain.BAKERY
             listOf("dolo", "medicine", "tablet", "pharmacy").any(lower::contains) -> CommerceDomain.PHARMACY
             listOf("carpenter", "cupboard", "door repair").any(lower::contains) -> CommerceDomain.CARPENTRY
-            listOf("plumber", "tap leaking", "pipe").any(lower::contains) -> CommerceDomain.PLUMBING
+
             else -> CommerceDomain.OTHER
         }
         val quantity = Regex("(?:^|\\s)(\\d+(?:[.,]\\d+)?)\\s*(?:kg|kilo|kilos|kilogram)").find(lower)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
         val budget = Regex("(?:₹|rs\\.?\\s*|rupees?\\s*)(\\d{2,6})").find(lower)?.groupValues?.get(1)?.toIntOrNull()
         val constraints = listOf("eggless", "veg", "vegan", "urgent").filter(lower::contains)
         val item = when (domain) {
-            CommerceDomain.BAKERY -> if (lower.contains("cake")) "chocolate cake" else ""
+            CommerceDomain.BAKERY -> when { lower.contains("chocolate cake") -> "chocolate cake"; lower.contains("cake") -> "cake"; lower.contains("bread") -> "bread"; else -> "" }
+            CommerceDomain.PHARMACY -> if (lower.contains("dolo")) "Dolo 650".takeIf { lower.contains("650") } ?: "Dolo" else ""
+            CommerceDomain.CARPENTRY -> if (lower.contains("hinge")) "cupboard hinge repair" else ""
             else -> ""
         }
         val warnings = buildList {
@@ -60,3 +62,6 @@ object IntentValidator {
         if (draft.deadlineEpoch != null && draft.deadlineEpoch <= System.currentTimeMillis()) add("Deadline must be in the future")
     }
 }
+
+
+
