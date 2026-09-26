@@ -14,12 +14,12 @@ import java.io.File
 
 @Serializable
 data class HarnessConfig(
-    val sessionId: String = newSessionCode(),
+    val sessionId: String = "demo-kondapur",
     val customerId: String = newId(),
     val sellerId: String = newId(),
     val host: String = "broker.hivemq.com",
-    val port: Int = 8883,
-    val tls: Boolean = true,
+    val port: Int = 1883,
+    val tls: Boolean = false,
     val role: Role = Role.LOCAL_LOOP,
     val sellerVariant: Int = 0,
     val maxDailyOrders: Int = 3
@@ -27,7 +27,7 @@ data class HarnessConfig(
 
 class HarnessViewModel(application: Application) : AndroidViewModel(application) {
     private val configFile = File(application.filesDir, "harness.json")
-    private val stored = runCatching { Protocol.json.decodeFromString(HarnessConfig.serializer(), configFile.readText()) }.getOrDefault(HarnessConfig())
+    private val stored = runCatching { Protocol.json.decodeFromString(HarnessConfig.serializer(), configFile.readText()) }.getOrDefault(HarnessConfig()).let { if (it.host == "broker.hivemq.com" && it.port == 8883) it.copy(port = 1883, tls = false) else it }
     private val mutableConfig = MutableStateFlow(stored)
     val config = mutableConfig.asStateFlow()
     private val active = MutableStateFlow<HarnessSession?>(null)
@@ -66,14 +66,14 @@ class HarnessViewModel(application: Application) : AndroidViewModel(application)
             finally { working.value = false }
         }
     }
-    fun send(item: String, quantity: String, budget: String, hours: String, constraints: String) = action {
+    fun send(item: String, quantity: String, budget: String, hours: String, constraints: String, domain: String = "bakery") = action {
         val current = checkNotNull(active.value)
         check(current.ready.value && current.transport.connection.value == ConnectionState.Connected) { "Connect first" }
         val qty = quantity.toDoubleOrNull()
         val money = budget.toIntOrNull()
         val deadlineHours = hours.toLongOrNull()
         require(item.isNotBlank() && qty != null && qty.isFinite() && qty > 0 && money != null && money > 0 && deadlineHours != null && deadlineHours in 1..168) { "Enter an item, positive quantity, whole rupee budget, and deadline 1–168 hours ahead." }
-        val request = Request(newId(), config.value.customerId, "kondapur", "bakery", item.trim(), qty, "kg", money,
+        val request = Request(newId(), config.value.customerId, "kondapur", domain.trim().lowercase(), item.trim(), qty, "kg", money,
             System.currentTimeMillis() + deadlineHours * 3_600_000, constraints.split(',').map(::key).filter { it.isNotBlank() }.distinct())
         current.customer.send(request, System.currentTimeMillis())
     }
@@ -97,6 +97,10 @@ class HarnessViewModel(application: Application) : AndroidViewModel(application)
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { try { transport.disconnect() } finally { cancel() } }
     }
 }
+
+
+
+
 
 
 

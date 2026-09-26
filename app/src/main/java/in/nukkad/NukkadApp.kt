@@ -1,6 +1,7 @@
 package `in`.nukkad
 
 import androidx.compose.foundation.layout.*
+import in.nukkad.BuildConfig
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -33,19 +34,22 @@ fun NukkadApp(vm: HarnessViewModel = viewModel()) {
     var host by rememberSaveable(saved.host) { mutableStateOf(saved.host) }
     var port by rememberSaveable(saved.port) { mutableStateOf(saved.port.toString()) }
     var tls by rememberSaveable(saved.tls) { mutableStateOf(saved.tls) }
-    var role by rememberSaveable(saved.role) { mutableStateOf(saved.role) }
+    var role by rememberSaveable(saved.role) { mutableStateOf(if (BuildConfig.NUKKAD_ROLE == "merchant") Role.SELLER else if (BuildConfig.NUKKAD_ROLE == "customer") Role.CUSTOMER else saved.role) }
     var variant by rememberSaveable(saved.sellerVariant) { mutableIntStateOf(saved.sellerVariant) }
     var capacity by rememberSaveable(saved.maxDailyOrders) { mutableStateOf(saved.maxDailyOrders.toString()) }
-    var showConfig by rememberSaveable { mutableStateOf(true) }
+    var showConfig by rememberSaveable { mutableStateOf(BuildConfig.NUKKAD_ROLE == "dev") }
+    LaunchedEffect(BuildConfig.NUKKAD_ROLE) {
+        if (BuildConfig.NUKKAD_ROLE != "dev" && session == null) vm.connect(saved.copy(sessionId = "demo-kondapur", role = role, port = 1883, tls = false))
+    }
     val settingsChanged = session != null && (sessionText.trim().lowercase() != saved.sessionId || host.trim() != saved.host || port != saved.port.toString() || tls != saved.tls || role != saved.role || variant != saved.sellerVariant || capacity != saved.maxDailyOrders.toString())
     Scaffold { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column { Text("NUKKAD", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black); Text("M2 · SELECTION & CAPACITY · 0.3", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }
-                TextButton(onClick = { showConfig = !showConfig }) { Text(if (showConfig) "Hide setup" else "Setup") }
+                if (BuildConfig.NUKKAD_ROLE == "dev") TextButton(onClick = { showConfig = !showConfig }) { Text(if (showConfig) "Hide setup" else "Setup") } else Text(if (BuildConfig.NUKKAD_ROLE == "merchant") "MERCHANT" else "CUSTOMER", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             }
             Text("One request. Independent shop rules.", style = MaterialTheme.typography.titleMedium)
-            if (showConfig) {
+            if (showConfig && BuildConfig.NUKKAD_ROLE == "dev") {
                 Text("01 / CONNECT", color = MaterialTheme.colorScheme.secondary)
                 Role.entries.forEach { choice ->
                     FilterChip(selected = role == choice, enabled = !busy, onClick = { role = choice }, label = { Text(when(choice) { Role.LOCAL_LOOP -> "Local loop · fake broker"; Role.CUSTOMER -> "Phone A · customer / MQTT"; Role.SELLER -> "Phone B · seller / MQTT" }) })
@@ -63,7 +67,7 @@ fun NukkadApp(vm: HarnessViewModel = viewModel()) {
                         Switch(checked = tls, onCheckedChange = { tls = it; port = if (it) "8883" else "1883" }, enabled = !busy)
                         Text("TLS", Modifier.padding(top = 12.dp))
                     }
-                    Text("Public demo broker: use synthetic requests only. Keep both apps in the foreground. Broker availability is external.", style = MaterialTheme.typography.bodySmall)
+                    Text("Public demo broker: use synthetic requests only. Recommended mobile setting is TLS off on port 1883. If TLS/8883 is refused, switch TLS off, reconnect both phones, and use the same session code.", style = MaterialTheme.typography.bodySmall)
                 }
                 if (role != Role.CUSTOMER) {
                     HarnessField("Merchant capacity · orders/day", capacity, { capacity = it }, KeyboardType.Number, !busy)
@@ -82,9 +86,9 @@ fun NukkadApp(vm: HarnessViewModel = viewModel()) {
                 val online = ready && connection == ConnectionState.Connected
                 Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(if (online) "● BROKER READY · ${active.role}" else when(val status = connection) { is ConnectionState.Failed -> "Connection failed: ${status.reason}"; else -> "${connection}" }, color = if (online) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary)
-                    SelectionContainer { Text("CONNECTED CODE: ${active.sessionId}", style = MaterialTheme.typography.titleMedium) }
-                    Text("Broker ready does not confirm the other phone is reachable.", style = MaterialTheme.typography.bodySmall)
-                    Text(if (active.role == Role.LOCAL_LOOP) "IN-MEMORY · This phone only" else "MQTT · ${saved.host}:${saved.port}", style = MaterialTheme.typography.labelMedium)
+                    if (BuildConfig.NUKKAD_ROLE == "dev") SelectionContainer { Text("CONNECTED CODE: ${active.sessionId}", style = MaterialTheme.typography.titleMedium) }
+                    if (BuildConfig.NUKKAD_ROLE == "dev") Text("Broker ready does not confirm the other phone is reachable.", style = MaterialTheme.typography.bodySmall)
+                    if (BuildConfig.NUKKAD_ROLE == "dev") Text(if (active.role == Role.LOCAL_LOOP) "IN-MEMORY · This phone only" else "MQTT · ${saved.host}:${saved.port}", style = MaterialTheme.typography.labelMedium)
                 } }
                 val log by active.diagnostics.collectAsStateWithLifecycle()
                 if (active.role != Role.SELLER) {
@@ -92,15 +96,15 @@ fun NukkadApp(vm: HarnessViewModel = viewModel()) {
                     Text(peerStatus, color = MaterialTheme.colorScheme.secondary)
                     OutlinedButton(onClick = vm::checkSeller, enabled = online && !busy && !settingsChanged) { Text("Check seller connection") }
                 }
-                Text("Delivery diagnostics", style = MaterialTheme.typography.titleMedium)
-                SelectionContainer { Text("Request topic: ${active.requestTopic}", style = MaterialTheme.typography.bodySmall) }
-                log.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (BuildConfig.NUKKAD_ROLE == "dev") Text("Delivery diagnostics", style = MaterialTheme.typography.titleMedium)
+                if (BuildConfig.NUKKAD_ROLE == "dev") SelectionContainer { Text("Request topic: ${active.requestTopic}", style = MaterialTheme.typography.bodySmall) }
+                if (BuildConfig.NUKKAD_ROLE == "dev") log.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                 incomingError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (active.role != Role.SELLER) {
                     val customer by active.customer.state.collectAsStateWithLifecycle()
                     val delivery by active.customer.delivery.collectAsStateWithLifecycle()
                     Text(delivery, color = MaterialTheme.colorScheme.primary)
-                    DebugCustomerScreen(customer, online && !busy && !settingsChanged, vm::send, vm::retry, vm::selectOffer, vm::cancelOrder)
+                    DebugCustomerScreen(customer, online && !busy && !settingsChanged, { item, quantity, budget, hours, constraints, domain -> vm.send(item, quantity, budget, hours, constraints, domain) }, vm::retry, vm::selectOffer, vm::cancelOrder)
                 }
                 if (active.role != Role.CUSTOMER) {
                     val seller by active.seller.state.collectAsStateWithLifecycle()
@@ -109,7 +113,7 @@ fun NukkadApp(vm: HarnessViewModel = viewModel()) {
                     DebugSellerScreen(active.seller.profile, seller, orders, orderEvent)
                 }
                 HorizontalDivider()
-                OutlinedButton(onClick = vm::reset, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Reset harness · new session") }
+                if (BuildConfig.NUKKAD_ROLE == "dev") OutlinedButton(onClick = vm::reset, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Reset harness · new session") }
                 Text("Reset clears this phone’s requests and offers. Copy the new session ID to the other phones and reconnect them. M2 reserves capacity after seller acceptance. Unpaid holds expire after 10 minutes. A new demo session starts a fresh isolated ledger; do not reset during an order test.", style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -121,5 +125,8 @@ fun HarnessField(label: String, value: String, onChange: (String) -> Unit, keybo
     OutlinedTextField(value, onChange, label = { Text(label) }, singleLine = true, enabled = enabled,
         keyboardOptions = KeyboardOptions(keyboardType = keyboard), modifier = Modifier.fillMaxWidth())
 }
+
+
+
 
 

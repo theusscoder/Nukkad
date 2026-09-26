@@ -7,6 +7,33 @@ plugins {
 android {
     namespace = "in.nukkad"
     compileSdk = 35
+    flavorDimensions += "audience"
+    productFlavors {
+        create("customer") {
+            dimension = "audience"
+            applicationIdSuffix = ".customer"
+            versionNameSuffix = "-customer"
+            buildConfigField("String", "NUKKAD_ROLE", "\"customer\"")
+        }
+        create("merchant") {
+            dimension = "audience"
+            applicationIdSuffix = ".merchant"
+            versionNameSuffix = "-merchant"
+            buildConfigField("String", "NUKKAD_ROLE", "\"merchant\"")
+        }
+        create("dev") {
+            dimension = "audience"
+            buildConfigField("String", "NUKKAD_ROLE", "\"dev\"")
+        }
+    }
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("nukkad-debug.keystore")
+            storePassword = "android"
+            keyAlias = "nukkad"
+            keyPassword = "android"
+        }
+    }
     defaultConfig {
         applicationId = "in.nukkad"
         minSdk = 26
@@ -15,7 +42,7 @@ android {
         versionName = "0.4-m3-routing"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -43,6 +70,10 @@ dependencies {
 tasks.withType<Test>().configureEach {
     systemProperty("nukkad.mqttSmoke", providers.gradleProperty("mqttSmoke").orElse("false").get())
 }
+
+
+
+
 
 
 
