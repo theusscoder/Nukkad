@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.*
 
 sealed interface SellerState {
     data object Live : SellerState
-    data class Evaluated(val request: Request, val decision: Decision, val quoteSent: Boolean = false) : SellerState
+    data class Evaluated(val request: Request, val decision: Decision, val quoteSent: Boolean = false, val ownerOffer: Offer? = null) : SellerState
 }
 class SellerViewModel(private val transport: Transport, private val session: String, val profile: SellerProfile, store: StateStore<SellerLedger> = MemoryStore(SellerLedger())) {
     private val mutable = MutableStateFlow<SellerState>(SellerState.Live)
@@ -35,6 +35,17 @@ class SellerViewModel(private val transport: Transport, private val session: Str
             quoteCount.value = quotedIds.size
             mutable.value = SellerState.Evaluated(request, decision, quoteSent = true)
         }
+    }
+    suspend fun sendOwnerOffer(request: Request, amount: Int, readyByEpoch: Long, now: Long) {
+        val current = mutable.value as? SellerState.Evaluated ?: error("No open request to offer on")
+        require(current.request.requestId == request.requestId && current.decision is Decision.NeedsOwner) { "This request no longer needs an owner offer" }
+        val offer = book.quoteByOwner(request, amount, readyByEpoch, now)
+        transport.publish(Protocol.offers(session, request.customerId), Protocol.encode(Message(
+            sessionId = session, sentAtEpoch = now, type = EventType.OFFER, offer = offer
+        )))
+        quotedIds.add(request.requestId)
+        quoteCount.value = quotedIds.size
+        mutable.value = current.copy(quoteSent = true, ownerOffer = offer)
     }
     suspend fun select(selection: Selection, now: Long) {
         val order = book.select(selection, now)

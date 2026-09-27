@@ -13,7 +13,7 @@ class SpeechInput(private val context: Context) {
     fun cancel() { val old = active; active = null; old?.cancel(); old?.destroy() }
     fun finish() { active?.stopListening() }
     fun available(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
-    fun start(languageTag: String, onResult: (String) -> Unit, onError: (String) -> Unit) {
+    fun start(languageTag: String, onResult: (String) -> Unit, onError: (String) -> Unit, onPartial: (String) -> Unit = {}) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             onError("Microphone permission is required")
             return
@@ -49,13 +49,17 @@ class SpeechInput(private val context: Context) {
             override fun onRmsChanged(rmsdB: Float) = Unit
             override fun onBufferReceived(buffer: ByteArray?) = Unit
             override fun onEndOfSpeech() = Unit
-            override fun onPartialResults(partialResults: android.os.Bundle?) = Unit
+            override fun onPartialResults(partialResults: android.os.Bundle?) {
+                if (active !== recognizer) return
+                partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                    ?.takeIf(String::isNotBlank)?.let(onPartial)
+            }
             override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
         })
         recognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         })
     }
 }

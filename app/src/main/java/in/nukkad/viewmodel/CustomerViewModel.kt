@@ -22,6 +22,8 @@ class CustomerViewModel(private val transport: Transport, private val session: S
     private val deliveryState = MutableStateFlow("No request sent")
     val delivery = deliveryState.asStateFlow()
     private val receivers = linkedMapOf<String, String>()
+    private val presence = MutableStateFlow<List<Receipt>>(emptyList())
+    val respondingSellers = presence.asStateFlow()
     init { refresh(System.currentTimeMillis()) }
     private fun commit(next: CustomerLedger, now: Long) { store.save(next); ledger = next; refresh(now) }
     private fun refresh(now: Long) {
@@ -41,12 +43,13 @@ class CustomerViewModel(private val transport: Transport, private val session: S
         val request = ledger.request ?: return
         if (receipt.customerId != customerId || receipt.requestId != request.requestId) return
         receivers[receipt.sellerId] = receipt.sellerName
+        presence.update { old -> (old.filterNot { it.sellerId == receipt.sellerId } + receipt) }
         deliveryState.value = "Request received by: " + receivers.values.joinToString()
     }
     suspend fun send(request: Request, now: Long) {
         require(request.customerId == customerId)
         check(mutable.value !is CustomerState.Selecting && mutable.value !is CustomerState.Accepted) { "Resolve or cancel the current selection before starting another request" }
-        if (ledger.request?.requestId != request.requestId) { receivers.clear(); commit(CustomerLedger(request = request), now) }
+        if (ledger.request?.requestId != request.requestId) { receivers.clear(); presence.value = emptyList(); commit(CustomerLedger(request = request), now) }
         deliveryState.value = "Publishing request…"
         try { transport.publish(Protocol.requests(session, request.area, request.domain), Protocol.encode(Message(sessionId = session, sentAtEpoch = now, type = EventType.REQUEST, request = request))) }
         catch (e: Exception) { deliveryState.value = "Publish failed; reconnect and retry"; throw e }

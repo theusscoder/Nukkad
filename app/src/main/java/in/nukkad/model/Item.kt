@@ -9,5 +9,7 @@ data class Item(
     val pricePerUnit: Int,
     val maxQuantity: Double,
     /** Fixed per-order surcharge, including zero for constraints supported free. */
-    val constraintSurcharges: Map<String, Int> = emptyMap()
+    val constraintSurcharges: Map<String, Int> = emptyMap(),
+    /** Explicit merchant-approved alternate names; used only in FLEX mode. */
+    val aliases: List<String> = emptyList()
 )

@@ -14,18 +14,21 @@ data class IntentDraft(
     val originalTranscript: String,
     val normalizedText: String? = null,
     val needsConfirmation: Boolean = true,
-    val warnings: List<String> = emptyList()
+    val warnings: List<String> = emptyList(),
+    val confidence: Double? = null,
+    val deadlineText: String? = null,
+    val interpreter: String = "Deterministic fallback"
 )
 
 interface LlmEngine {
-    suspend fun extract(transcript: String, nowEpoch: Long): IntentDraft
+    suspend fun extract(transcript: String, nowEpoch: Long, languageTag: String = "en-IN"): IntentDraft
     val name: String
 }
 
 /** M5 safety fallback. Money/quantity are accepted only when explicit in the transcript. */
 class DeterministicIntentParser : LlmEngine {
     override val name = "Deterministic fallback"
-    override suspend fun extract(transcript: String, nowEpoch: Long): IntentDraft {
+    override suspend fun extract(transcript: String, nowEpoch: Long, languageTag: String): IntentDraft {
         val lower = transcript.trim().lowercase()
         val domain = when {
             listOf("cake", "bakery", "bread", "pastry").any(lower::contains) -> CommerceDomain.BAKERY

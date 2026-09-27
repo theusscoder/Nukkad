@@ -14,6 +14,8 @@ data class Offer(
     val explanation: List<String>,
     val fulfilledConstraints: List<String> = emptyList(),
     val expiresAtEpoch: Long = Long.MAX_VALUE,
-    val policyVersion: String = ""
+    val policyVersion: String = "",
+    val sellerLocation: GeoPoint? = null,
+    val sellerArea: String? = null
 )
 

@@ -44,6 +44,23 @@ class ShopAgentTest {
         assertTrue(decide(request.copy(area = "other")) is Decision.NoMatch)
         assertTrue(decide(request.copy(item = "brownie")) is Decision.NoMatch)
     }
+    @Test fun flexOnlyQuotesMerchantApprovedAlternateNames() {
+        val alternate = request.copy(item = "black forest cake")
+        val configured = seller.copy(discoveryMode = DiscoveryMode.FLEX,
+            items = seller.items.map { it.copy(aliases = listOf("black forest cake")) })
+        val result = decide(alternate, configured) as Decision.AutoQuote
+        assertEquals(750, result.amount)
+        assertTrue(result.checks.first { it.name == "Item available" }.detail.contains("approved alternate"))
+    }
+    @Test fun exactModeDoesNotUseAlternateNames() {
+        val configured = seller.copy(items = seller.items.map { it.copy(aliases = listOf("black forest cake")) })
+        assertTrue(decide(request.copy(item = "black forest cake"), configured) is Decision.NoMatch)
+    }
+    @Test fun openModeUnknownItemNeedsOwnerAndNeverInventsPrice() {
+        val result = decide(request.copy(item = "brownies"), seller.copy(discoveryMode = DiscoveryMode.OPEN)) as Decision.NeedsOwner
+        assertNull(result.suggestedAmount)
+        assertTrue(result.reason.contains("price"))
+    }
     @Test fun disabledAutoQuoteNeedsOwner() { assertTrue(decide(s = seller.copy(rules = seller.rules.copy(autoQuoteEnabled = false))) is Decision.NeedsOwner) }
     @Test fun fractionalPriceRoundsUp() {
         assertEquals(284, (decide(request.copy(quantity = 0.333, constraints = emptyList()), seller.copy(items = listOf(Item("chocolate cake", "kg", 851, 5.0)), rules = seller.rules.copy(minimumPrice = 0))) as Decision.AutoQuote).amount)

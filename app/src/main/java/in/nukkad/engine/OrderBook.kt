@@ -39,11 +39,31 @@ class OrderBook(private val profile: SellerProfile, private val store: StateStor
         val decision = if (preliminary is Decision.AutoQuote) agent.decide(request, profile, MerchantState(count(preliminary.readyByEpoch, now)), now + QUOTE_TTL) else preliminary
         val offer = (decision as? Decision.AutoQuote)?.let {
             Offer(newId(), request.requestId, profile.sellerId, profile.shopName, it.amount, it.readyByEpoch, true,
-                it.checks.map { check -> "${check.name}: ${check.detail}" }, request.constraints.map(::key), now + QUOTE_TTL, policy)
+                it.checks.map { check -> "${check.name}: ${check.detail}" }, request.constraints.map(::key), now + QUOTE_TTL, policy,
+                profile.location?.takeIf(GeoPoint::isValid)?.publicApproximation(), profile.area)
         }
         if (offer != null) commit(ledger.copy(quotes = ledger.quotes + SavedQuote(request, offer, decision.checks)))
         decision to offer
     }
+
+    /** Owner-reviewed offer for an OPEN-mode item with no catalogue price. */
+    suspend fun quoteByOwner(request: Request, amount: Int, readyByEpoch: Long, now: Long): Offer = mutex.withLock {
+        expireLocked(now)
+        require(request.requestId !in ledger.closedRequests) { "This request is already closed" }
+        require(amount > 0 && (request.budgetMax == null || amount <= request.budgetMax)) { "Offer must fit the customer's stated budget" }
+        require(readyByEpoch > now && (request.deadlineEpoch == null || readyByEpoch <= request.deadlineEpoch)) {
+            "Choose a ready time that fits the customer's deadline"
+        }
+        require(count(readyByEpoch, now) < profile.rules.maxDailyOrders) { "Your daily capacity is full for that ready time" }
+        require(ledger.quotes.none { it.request.requestId == request.requestId }) { "An offer was already sent for this request" }
+        val offer = Offer(newId(), request.requestId, profile.sellerId, profile.shopName, amount, readyByEpoch, false,
+            listOf("Owner confirmed capability, options, price and ready time"), request.constraints.map(::key), now + QUOTE_TTL,
+            policy, profile.location?.takeIf(GeoPoint::isValid)?.publicApproximation(), profile.area)
+        val check = Check("Owner confirmation", true, "Capability, options, price and ready time confirmed by merchant")
+        commit(ledger.copy(quotes = ledger.quotes + SavedQuote(request, offer, listOf(check), ownerApproved = true)))
+        offer
+    }
+
     suspend fun select(selection: Selection, now: Long): Order = mutex.withLock {
         require(selection.sellerId == profile.sellerId)
         expireLocked(now)
@@ -62,9 +82,16 @@ class OrderBook(private val profile: SellerProfile, private val store: StateStor
         if (ledger.orders.any { it.selection.requestId == selection.requestId && it.status == OrderStatus.ACCEPTED && it.holdUntilEpoch > now }) return@withLock reject("Request already has a reservation")
         if (quote.offer.expiresAtEpoch <= now) return@withLock reject("Quote expired; request fresh offers")
         if (quote.offer.policyVersion != policy) return@withLock reject("Merchant rules changed; request fresh offers")
-        val decision = agent.decide(quote.request, profile, MerchantState(count(quote.offer.readyByEpoch, now)), now)
-        if (decision !is Decision.AutoQuote) return@withLock reject("Merchant cannot accept: " + decision.checks.filter { !it.passed }.joinToString { it.name }.ifBlank { "owner review required" })
-        if (decision.amount != quote.offer.amount || decision.readyByEpoch > quote.offer.readyByEpoch) return@withLock reject("Quoted price or ready time can no longer be honored")
+        if (quote.ownerApproved) {
+            if (quote.offer.readyByEpoch <= now || (quote.request.deadlineEpoch != null && quote.offer.readyByEpoch > quote.request.deadlineEpoch))
+                return@withLock reject("Owner offer no longer fits the deadline")
+            if (count(quote.offer.readyByEpoch, now) >= profile.rules.maxDailyOrders)
+                return@withLock reject("Merchant capacity is no longer available")
+        } else {
+            val decision = agent.decide(quote.request, profile, MerchantState(count(quote.offer.readyByEpoch, now)), now)
+            if (decision !is Decision.AutoQuote) return@withLock reject("Merchant cannot accept: " + decision.checks.filter { !it.passed }.joinToString { it.name }.ifBlank { "owner review required" })
+            if (decision.amount != quote.offer.amount || decision.readyByEpoch > quote.offer.readyByEpoch) return@withLock reject("Quoted price or ready time can no longer be honored")
+        }
         val result = Order(selection, OrderStatus.ACCEPTED, profile.shopName, quote.offer.amount, quote.offer.readyByEpoch, minOf(now + HOLD_TTL, quote.offer.readyByEpoch), "Capacity reserved; payment not implemented in M2")
         commit(ledger.copy(orders = ledger.orders + result))
         result

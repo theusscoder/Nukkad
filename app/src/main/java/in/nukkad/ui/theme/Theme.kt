@@ -20,11 +20,18 @@ private val NukkadColors = lightColorScheme(
 @Composable fun NukkadTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = NukkadColors,
         typography = Typography(
+            displayLarge = TextStyle(fontSize = 62.sp, lineHeight = 66.sp, fontWeight = FontWeight.Black, letterSpacing = (-2).sp),
+            displayMedium = TextStyle(fontSize = 52.sp, lineHeight = 56.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.5).sp),
             headlineLarge = TextStyle(fontSize = 38.sp, lineHeight = 42.sp, fontWeight = FontWeight.Black, letterSpacing = (-1).sp),
             headlineMedium = TextStyle(fontSize = 30.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
+            headlineSmall = TextStyle(fontSize = 25.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
             titleLarge = TextStyle(fontSize = 23.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold),
-            displaySmall = TextStyle(fontSize = 46.sp, fontWeight = FontWeight.Black)
+            titleMedium = TextStyle(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+            bodyLarge = TextStyle(fontSize = 17.sp, lineHeight = 25.sp),
+            bodyMedium = TextStyle(fontSize = 15.sp, lineHeight = 22.sp),
+            labelLarge = TextStyle(fontSize = 15.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold),
+            displaySmall = TextStyle(fontSize = 46.sp, lineHeight = 50.sp, fontWeight = FontWeight.Black)
         ),
-        shapes = Shapes(medium = RoundedCornerShape(20.dp), large = RoundedCornerShape(28.dp)),
+        shapes = Shapes(small = RoundedCornerShape(16.dp), medium = RoundedCornerShape(20.dp), large = RoundedCornerShape(28.dp)),
         content = content)
 }

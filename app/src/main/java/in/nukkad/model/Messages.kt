@@ -16,7 +16,8 @@ enum class EventType { REQUEST, OFFER, PROBE, RECEIPT, SELECT, ORDER_STATUS, CAN
 @Serializable
 data class Probe(val probeId: String, val customerId: String)
 @Serializable
-data class Receipt(val customerId: String, val sellerId: String, val sellerName: String, val requestId: String? = null, val probeId: String? = null)
+data class Receipt(val customerId: String, val sellerId: String, val sellerName: String, val requestId: String? = null, val probeId: String? = null,
+                   val sellerLocation: GeoPoint? = null, val sellerArea: String? = null)
 
 @Serializable
 data class Message(

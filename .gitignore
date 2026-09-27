@@ -16,3 +16,6 @@ Nukkad-source-new.zip
 Nukkad-source-v0.6.zip
 Nukkad-source-new.zip
 .android-local/
+
+*.zip
+.android-local/

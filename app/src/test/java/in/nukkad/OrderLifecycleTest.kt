@@ -131,4 +131,22 @@ class OrderLifecycleTest {
         book.close(CloseOffer(request.requestId, request.customerId, offer.sellerId), now)
         assertEquals(OrderStatus.ACCEPTED, book.select(selected, now + 1000).status)
     }
+    @Test fun openModeManualOfferRequiresOwnerAndCanBeAccepted() = runTest {
+        val profile = profile().copy(discoveryMode = DiscoveryMode.OPEN)
+        val book = OrderBook(profile)
+        val request = request().copy(item = "brownies")
+        val (decision, automatic) = book.quote(request, now)
+        assertTrue(decision is Decision.NeedsOwner)
+        assertNull(automatic)
+        val offer = book.quoteByOwner(request, 780, now + 3 * 3_600_000, now)
+        assertFalse(offer.autoQuoted)
+        assertEquals(780, offer.amount)
+        assertEquals(OrderStatus.ACCEPTED, book.select(selection(request, offer), now + 1000).status)
+    }
+    @Test fun ownerOfferCannotExceedCustomerBudget() = runTest {
+        val book = OrderBook(profile().copy(discoveryMode = DiscoveryMode.OPEN))
+        val request = request().copy(item = "brownies", budgetMax = 750)
+        assertTrue(book.quote(request, now).first is Decision.NeedsOwner)
+        assertTrue(runCatching { book.quoteByOwner(request, 751, now + 3 * 3_600_000, now) }.isFailure)
+    }
 }

@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -38,8 +40,8 @@ android {
         resValue("string", "app_name", "Nukkad Dev")
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.7-product"
+        versionCode = 11
+        versionName = "1.1-ui"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = false }
@@ -47,9 +49,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
     packaging { resources.excludes += setOf("META-INF/INDEX.LIST", "META-INF/io.netty.versions.properties") }
 }
+kotlin { compilerOptions { jvmTarget = JvmTarget.JVM_17 } }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.04.01"))
     implementation("androidx.activity:activity-compose:1.10.1")
@@ -61,6 +63,15 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+    // Pinned LiteRT-LM runtime is customer-only; weights are imported separately and not bundled.
+    add("customerImplementation", "com.google.ai.edge.litertlm:litertlm-android:0.11.0")
+    add("customerImplementation", "com.uber:h3-android:4.5.0")
+    // Physical-world features are optional add-ons; customer requests/offers still work without permission.
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    add("merchantImplementation", "androidx.camera:camera-camera2:1.5.3")
+    add("merchantImplementation", "androidx.camera:camera-lifecycle:1.5.3")
+    add("merchantImplementation", "androidx.camera:camera-view:1.5.3")
+    add("merchantImplementation", "com.google.mlkit:text-recognition:16.0.1")
     implementation("com.hivemq:hivemq-mqtt-client:1.3.3")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")

@@ -11,7 +11,7 @@ data class Order(val selection: Selection, val status: OrderStatus, val sellerNa
 @Serializable
 data class CloseOffer(val requestId: String, val customerId: String, val sellerId: String)
 @Serializable
-data class SavedQuote(val request: Request, val offer: Offer, val checks: List<Check>)
+data class SavedQuote(val request: Request, val offer: Offer, val checks: List<Check>, val ownerApproved: Boolean = false)
 @Serializable
 data class SellerLedger(val quotes: List<SavedQuote> = emptyList(), val orders: List<Order> = emptyList(), val closedRequests: Set<String> = emptySet())
 @Serializable

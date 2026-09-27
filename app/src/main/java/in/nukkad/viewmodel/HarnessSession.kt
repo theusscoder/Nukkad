@@ -60,7 +60,8 @@ class HarnessSession(
                         EventType.REQUEST -> if (role != Role.CUSTOMER && packet.topic in subscribedRequestTopics) {
                             val request = message.request!!
                             record("REQUEST received · ${request.requestId.take(8)}")
-                            acknowledge(Receipt(request.customerId, profile.sellerId, profile.shopName, requestId = request.requestId))
+                            acknowledge(Receipt(request.customerId, profile.sellerId, profile.shopName, requestId = request.requestId,
+                                sellerLocation = profile.location?.takeIf(GeoPoint::isValid)?.publicApproximation(), sellerArea = profile.area))
                             seller.receive(request, now())
                             record("Merchant evaluation finished; see checks below")
                         }
@@ -71,7 +72,8 @@ class HarnessSession(
                         EventType.PROBE -> if (role != Role.CUSTOMER && packet.topic in subscribedRequestTopics) {
                             record("Connection check received; replying")
                             val probe = message.probe!!
-                            acknowledge(Receipt(probe.customerId, profile.sellerId, profile.shopName, probeId = probe.probeId))
+                            acknowledge(Receipt(probe.customerId, profile.sellerId, profile.shopName, probeId = probe.probeId,
+                                sellerLocation = profile.location?.takeIf(GeoPoint::isValid)?.publicApproximation(), sellerArea = profile.area))
                         }
                         EventType.RECEIPT -> if (role != Role.SELLER && packet.topic == offerTopic) {
                             val receipt = message.receipt!!

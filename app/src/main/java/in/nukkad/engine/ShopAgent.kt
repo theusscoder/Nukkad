@@ -22,9 +22,22 @@ class ShopAgent {
         val zone = runCatching { ZoneId.of(rules.zoneId) }.getOrNull()
             ?: return Decision.NeedsOwner("Invalid shop timezone", null, checks + Check("Timezone", false, rules.zoneId))
         if (!check("Routing", key(request.area) == key(seller.area) && request.domain in seller.domains, "${seller.area} · ${seller.domains.joinToString()}")) return Decision.NoMatch(checks)
-        val item = seller.items.firstOrNull { key(it.name) == key(request.item) }
-        if (!check("Item available", item != null, request.item)) return Decision.NoMatch(checks)
-        item!!
+        val exactItem = seller.items.firstOrNull { key(it.name) == key(request.item) }
+        val item = exactItem ?: if (seller.discoveryMode == DiscoveryMode.FLEX) {
+            seller.items.firstOrNull { candidate -> candidate.aliases.any { key(it) == key(request.item) } }
+        } else null
+        if (item == null) {
+            val detail = when (seller.discoveryMode) {
+                DiscoveryMode.EXACT -> "${request.item} is not in the catalogue"
+                DiscoveryMode.FLEX -> "No merchant-approved similar item for ${request.item}"
+                DiscoveryMode.OPEN -> "${request.item} needs a capability and price check by the owner"
+            }
+            checks += Check("Item available", false, detail)
+            return if (seller.discoveryMode == DiscoveryMode.OPEN) {
+                Decision.NeedsOwner("Unknown catalogue item; owner must confirm capability and price", null, checks)
+            } else Decision.NoMatch(checks)
+        }
+        check("Item available", true, if (exactItem != null) request.item else "${request.item} → ${item.name} (approved alternate)")
         val quantity = request.quantity
         if (quantity == null || request.unit == null || request.budgetMax == null || request.deadlineEpoch == null) {
             check("Complete request", false, "Quantity, unit, budget and deadline must be confirmed")
