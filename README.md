@@ -1,83 +1,522 @@
-# Nukkad — M2 build (0.3)
+# Nukkad AI
 
-Native Android, Kotlin, Compose, one app module. The two-phone request/quote path is reported working by the user. This update adds the next checkpoint: **two merchant quotes → customer selection → one accepted unpaid reservation → other offer closed**.
+**Nukkad AI is a phone-first local commerce system that connects customer demand with nearby small merchants using on-device AI, deterministic merchant policies, and MQTT-based request routing.**
 
-See HACKATHON-PLAN.md for the revised roadmap and final product flow. Automatic category discovery without a customer-entered code and catalogue aliases are the next checkpoint, M3. The current UI is still a developer surface.
+Small businesses often have the right products or services but limited digital visibility. Customers, meanwhile, struggle to discover nearby merchants who can satisfy a specific request, especially when the merchant has no website, catalogue API, or online storefront.
 
-## Install and run on your three phones
+Nukkad reverses this model:
 
-Update ALL THREE phones to the M2 APK; older builds do not understand selection messages.
+**The customer describes a requirement → Nukkad routes it to relevant merchants → merchants respond with offers → the customer selects one.**
 
-1. Phone A: customer / MQTT.
-2. Phone B: seller / MQTT, Sweet Crumbs.
-3. Phone C: seller / MQTT, HomeBake.
-4. Use the same demo code, broker/port and TLS setting on all three. Connect B and C first, then A. Keep all apps open.
-5. On A, check seller connectivity. Both merchant names should appear after replying.
-6. Send 1 kg chocolate cake, eggless, budget 800, deadline 24 hours ahead.
-7. A should receive ₹750 and ₹780. Select ₹750.
-8. B rechecks policy and reserves capacity. A shows SELLER ACCEPTED. C shows CLOSED; A waits for its closure acknowledgement.
-9. Retry/refresh on A. The same order ID must still have just one reservation.
-10. Reconnect in the same session and retry/refresh to verify persisted recovery.
-11. Cancel the order on A. B releases capacity and acknowledges cancellation.
+The system is designed around **merchant-owned phones, on-device inference, deterministic pricing, and lightweight device-to-device communication infrastructure.**
 
-The Merchant capacity field supports 1–20 orders/day. Set it BEFORE requesting quotes. A policy change after quoting causes selection rejection and requires a fresh request.
+---
 
-Exact catalogue matching remains for this debug build: use `chocolate cake`. Natural-language/alias matching is M3/M5 work, not something already present here.
+## Core Idea
 
-## Transaction semantics
+A customer can make a natural-language request such as:
 
-- A quote does not reserve capacity.
-- Quotes expire after five minutes. Advertised readiness includes that five-minute selection window so the seller can honor it even if the customer selects near expiry.
-- SELECT identifies an immutable quote and a new order ID.
-- Seller validates customer/request/offer identity, expiry, policy version, price, capacity and readiness.
-- It atomically persists capacity before replying with ORDER_STATUS = ACCEPTED.
-- Only then does the customer send CLOSE to the losing sellers; they reply CLOSED. Late offers are closed too.
-- An unpaid reservation expires after up to ten minutes, or earlier cancellation. Payment is not implemented in M2.
-- Retrying SELECT uses the same order ID and returns its existing outcome.
-- CANCEL arriving before SELECT creates a cancellation tombstone, preventing delayed creation of that order.
-- Unknown selection outcomes stay pending; the customer cannot switch sellers or start a new request until the outcome is resolved/cancelled.
-- Expired/rejected quotes require a new request or another still-valid offer. No price is silently changed.
+```text
+1 kg eggless chocolate cake
+Budget: ₹800
+Required within: 24 hours
+```
 
-## Persistence and reset
+Nukkad converts the request into structured intent and routes it to relevant merchants.
 
-AtomicFile JSON stores customer request/offers/selection and seller quotes/orders/closed requests. A persistence failure must not result in an acceptance. Corrupt state fails visibly rather than resetting capacity silently.
+Each merchant phone independently evaluates:
 
-Ledgers are scoped to the demo session, with separate fake/MQTT storage. Reconnect to the SAME session to recover an order. A new session starts a fresh isolated demo ledger; it is not a real-order cancellation operation. Cancel outstanding demo reservations before resetting. All three phones must join the new session after reset.
+- Catalogue availability
+- Price
+- Minimum price
+- Capacity
+- Operating hours
+- Lead time
+- Merchant policy version
 
-## Transport
+The merchant then returns an offer.
 
-HiveMQ MQTT 3.1.1, QoS 1, clean sessions, no retained transactional messages.
+The customer can compare multiple offers and select one.
 
-- Requests: `nukkad/<session>/<area>/<category>/requests`
-- Customer responses: `nukkad/<session>/customers/<customerId>/offers`
-- Seller order control: `nukkad/<session>/sellers/<sellerId>/orders`
+---
 
-Events: REQUEST, OFFER, PROBE, RECEIPT, SELECT, ORDER_STATUS, CANCEL, CLOSE, CLOSED. ORDER_STATUS carries ACCEPTED, REJECTED, CANCELLED or EXPIRED. Closure is acknowledged, not inferred from successful publication.
+## Key Feature: Demand Signal
 
-The optional PROBE/RECEIPT diagnostics remain in this build. See CONNECTION-TROUBLESHOOTING.md if phones connect but messages do not arrive. Match the CONNECTED CODE, not just an edited field. Timestamp filtering requires reasonably synchronized phone clocks.
+Nukkad also turns customer requests into a simple demand signal for merchants.
 
-Public-broker demo traffic is not authenticated. Session codes are isolation/convenience, not authorization. Use synthetic data. Keep the foreground demo baseline; background delivery is not guaranteed. Production needs authenticated identities and topic authorization.
+### 🟥 RED
 
-## Build
+**Demand exists around the merchant, but the merchant does not stock the requested item.**
 
-JDK 17, Gradle wrapper 8.11.1, AGP 8.9.2, Kotlin/Compose compiler 2.1.20, compile/target SDK 35, minSdk 26.
+> Import it?
+
+### 🟩 GREEN
+
+**Demand exists and the merchant already stocks the item.**
+
+> Sell it.
+
+This gives merchants a direct view of **what customers around them are requesting**, allowing them to identify potential inventory opportunities instead of relying entirely on guesswork.
+
+---
+
+# System Architecture
+
+```text
+                         CUSTOMER PHONE
+                              │
+                    Android SpeechRecognizer
+                              │
+                              ▼
+                     Gemma 3 1B / LiteRT-LM
+                              │
+                              ▼
+                       Intent Extraction
+                              │
+                              ▼
+                       Request Review UI
+                              │
+                              ▼
+                    MQTT Request Routing
+                              │
+             ┌────────────────┴────────────────┐
+             ▼                                 ▼
+      MERCHANT PHONE A                  MERCHANT PHONE B
+             │                                 │
+       Merchant Agent                    Merchant Agent
+             │                                 │
+       Catalogue Check                   Catalogue Check
+       Policy Validation                 Policy Validation
+       Capacity Check                    Capacity Check
+       Deterministic Price               Deterministic Price
+             │                                 │
+             └──────────────┬──────────────────┘
+                            ▼
+                     MQTT Offer Channel
+                            │
+                            ▼
+                     CUSTOMER PHONE
+                            │
+                    Offer Comparison
+                            │
+                            ▼
+                       SELECT OFFER
+                            │
+                            ▼
+                  Merchant Validation
+                            │
+                            ▼
+                  Capacity Reservation
+                            │
+                            ▼
+                  ACCEPTED / REJECTED
+                            │
+                            ▼
+                  Losing Offers CLOSED
+```
+
+---
+
+# Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Platform | Native Android |
+| Language | Kotlin |
+| UI | Jetpack Compose |
+| AI | Gemma 3 1B |
+| AI Runtime | LiteRT-LM |
+| Speech | Android SpeechRecognizer |
+| OCR | CameraX + ML Kit Text Recognition |
+| Messaging | MQTT 3.1.1 |
+| MQTT Broker | HiveMQ |
+| Location / Routing | H3 |
+| Persistence | Android AtomicFile + JSON |
+| Build | Gradle 8.11.1 |
+| Android Gradle Plugin | 8.9.2 |
+| Kotlin / Compose Compiler | 2.1.20 |
+| Compile / Target SDK | 35 |
+| Minimum SDK | 26 |
+
+The current implementation uses a **single native Android project with one app module** and separate customer/merchant application flows.
+
+---
+
+# Request Pipeline
+
+### 1. Voice Input
+
+The customer speaks a request using Android SpeechRecognizer.
+
+Example:
+
+```text
+"1 kg eggless chocolate cake under 800 by tomorrow"
+```
+
+### 2. On-device Intent Parsing
+
+Gemma 3 1B running through LiteRT-LM extracts structured information:
+
+```json
+{
+  "item": "chocolate cake",
+  "quantity": "1 kg",
+  "constraints": {
+    "eggless": true
+  },
+  "budget": 800,
+  "deadline": "24h"
+}
+```
+
+The customer receives an editable representation before the request is transmitted.
+
+A rule-based fallback parser is also available when the model is unavailable.
+
+---
+
+# Merchant Processing
+
+Each merchant phone maintains its own catalogue and business rules.
+
+A request is evaluated locally against:
+
+```text
+Catalogue
+    ↓
+Availability
+    ↓
+Price / Minimum Price
+    ↓
+Capacity
+    ↓
+Operating Hours
+    ↓
+Lead Time
+    ↓
+Merchant Policy Version
+```
+
+The LLM is **not responsible for pricing**.
+
+Pricing and acceptance decisions are deterministic so that a model cannot invent a price or override merchant-defined constraints.
+
+---
+
+# Catalogue Onboarding
+
+Merchant onboarding is designed to avoid manual catalogue entry.
+
+Two supported inputs are:
+
+### Voice
+
+The merchant describes available products verbally.
+
+### Camera + OCR
+
+The merchant points the camera at an existing handwritten or printed price card.
+
+```text
+CameraX
+   ↓
+ML Kit Text Recognition
+   ↓
+Structured Catalogue Draft
+   ↓
+Merchant Review
+   ↓
+Persisted Catalogue
+```
+
+Exact catalogue matching is currently used in the M2 debug build.
+
+Natural-language aliases and automatic category discovery are planned for M3.
+
+---
+
+# MQTT Communication
+
+Nukkad uses **MQTT 3.1.1 with QoS 1** for request and transaction messaging.
+
+### Request Topic
+
+```text
+nukkad/<session>/<area>/<category>/requests
+```
+
+### Customer Offer Topic
+
+```text
+nukkad/<session>/customers/<customerId>/offers
+```
+
+### Merchant Order Control
+
+```text
+nukkad/<session>/sellers/<sellerId>/orders
+```
+
+### Supported Events
+
+```text
+REQUEST
+OFFER
+PROBE
+RECEIPT
+SELECT
+ORDER_STATUS
+CANCEL
+CLOSE
+CLOSED
+```
+
+`ORDER_STATUS` supports:
+
+```text
+ACCEPTED
+REJECTED
+CANCELLED
+EXPIRED
+```
+
+Closure is explicitly acknowledged by the merchant rather than inferred from successful MQTT publication.
+
+---
+
+# Multi-Merchant Transaction Flow
+
+The current M2 build supports:
+
+```text
+Customer Request
+      ↓
+Merchant A → Quote
+Merchant B → Quote
+      ↓
+Customer selects Quote A
+      ↓
+Merchant A validates:
+    - Request identity
+    - Offer identity
+    - Quote expiry
+    - Policy version
+    - Price
+    - Capacity
+    - Readiness
+      ↓
+Capacity atomically reserved
+      ↓
+ORDER_STATUS = ACCEPTED
+      ↓
+Customer closes losing offers
+      ↓
+Merchant B → CLOSED
+```
+
+Important transaction properties:
+
+- Quotes do not reserve capacity.
+- Quotes expire after five minutes.
+- Selecting a quote creates an immutable order ID.
+- Capacity is persisted before `ACCEPTED` is returned.
+- Repeated `SELECT` operations reuse the same order ID and return the existing outcome.
+- An unpaid reservation expires after up to ten minutes.
+- Cancellation releases merchant capacity.
+- Late offers are closed.
+- Expired or rejected offers require a new request.
+- Prices are never silently modified.
+
+---
+
+# Persistence
+
+Nukkad uses **AtomicFile-backed JSON persistence** for the current prototype.
+
+Customer-side state includes:
+
+```text
+Requests
+Offers
+Selections
+```
+
+Merchant-side state includes:
+
+```text
+Quotes
+Orders
+Closed Requests
+```
+
+Persistence failures do not result in an acceptance.
+
+Corrupt state is surfaced explicitly instead of silently resetting merchant capacity.
+
+Ledgers are scoped to a demo session, allowing the same session to recover state after reconnecting.
+
+---
+
+# Merchant Capacity
+
+Each merchant maintains a configurable daily capacity:
+
+```text
+1–20 orders/day
+```
+
+Capacity is checked during selection and reserved atomically when an order is accepted.
+
+A policy change after quoting invalidates the previous quote and requires a fresh request.
+
+---
+
+# Current Build
+
+### M2 — `0.3`
+
+Implemented:
+
+- Native Android application
+- Kotlin + Jetpack Compose
+- Customer request flow
+- Merchant request flow
+- On-device Gemma 3 1B intent extraction
+- LiteRT-LM integration
+- Android SpeechRecognizer
+- CameraX catalogue capture
+- ML Kit OCR
+- MQTT request routing
+- Multiple merchant quotes
+- Customer offer selection
+- Merchant policy validation
+- Capacity reservation
+- Offer closure
+- Cancellation
+- Persistent transaction state
+- Reconnect recovery
+- Demand / inventory signal
+
+### Next
+
+**M3**
+
+- Automatic category discovery
+- Catalogue aliases
+- More natural-language catalogue matching
+
+Planned future work includes:
+
+- Phone-to-phone offline mesh
+- NPU-optimized on-device inference
+- UPI payment integration
+- Automatic payment detection
+- Signed transaction receipts
+
+---
+
+# Build Requirements
+
+```text
+JDK 17
+Gradle 8.11.1
+Android Gradle Plugin 8.9.2
+compileSdk 35
+targetSdk 35
+minSdk 26
+```
+
+Build and test:
 
 ```powershell
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 ```
 
-Opt in to real-broker tests (two-client cycles and a three-client selection/close/cancel transaction):
+Optional MQTT integration tests:
 
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest -PmqttSmoke=true
 ```
 
-Without the flag, network tests are skipped. Fake-broker and pure commerce tests run offline. Network tests depend on the public broker's availability.
+Without `mqttSmoke=true`, network tests are skipped and offline tests run normally.
 
-APK build output: `app/build/outputs/apk/debug/app-debug.apk`. For Linux/macOS, `chmod +x gradlew` then use `./gradlew`.
+APK:
 
-## Changes to build configuration and permissions
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
 
-VersionCode is 3; versionName is 0.3-m2. No new dependencies or Android permissions were added. INTERNET remains the only permission. AtomicFile is provided by Android. No Hilt, Room, AI runtime or payment library is introduced here.
+---
 
-See VALIDATION.md for actual results and remaining physical-device checks. Code on the Go compatibility still needs its explicit device build experiment.
+# Three-Device Demo
+
+The current transaction flow can be demonstrated using three Android devices:
+
+```text
+Phone A
+Customer
+
+Phone B
+Merchant: Sweet Crumbs
+
+Phone C
+Merchant: HomeBake
+```
+
+All devices must run the same M2 APK and connect to the same:
+
+```text
+Demo Session
+MQTT Broker
+Port
+TLS Configuration
+```
+
+Expected flow:
+
+```text
+Customer
+   ↓
+"1 kg chocolate cake, eggless, ₹800"
+   ↓
+Sweet Crumbs → ₹750
+HomeBake     → ₹780
+   ↓
+Customer selects ₹750
+   ↓
+Sweet Crumbs → ACCEPTED
+HomeBake     → CLOSED
+```
+
+The same order ID can then be used to verify transaction recovery after reconnecting.
+
+---
+
+# Security & Production Considerations
+
+The current hackathon build uses a public MQTT broker for demonstration.
+
+Therefore:
+
+- MQTT traffic is not authenticated.
+- Session codes provide isolation, not authorization.
+- Synthetic data should be used.
+- Clean MQTT sessions are used.
+- Background delivery is not guaranteed.
+
+A production deployment would require:
+
+- Authenticated merchant/customer identities
+- Topic-level authorization
+- Secure broker infrastructure
+- Stronger transaction authentication
+- Protected payment flows
+- Production-grade key management
+- Reliable background message delivery
+
+---
+
+# Project Status
+
+**Nukkad AI is currently a working native Android prototype demonstrating phone-first local commerce, on-device intent extraction, merchant-side deterministic decision making, MQTT-based discovery, multi-merchant quoting, and transactional offer selection.**
